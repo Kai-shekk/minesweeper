@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  👉 <b><a href="https://kai-shekk.github.io/minesweeper/">【立即在线试玩 (Play Online)】</a></b> 👈
+  🎮 <b>在线直达试玩</b>：<a href="https://kai-shekk.github.io/minesweeper/index.html">https://kai-shekk.github.io/minesweeper/</a>
 </p>
 
 ---
