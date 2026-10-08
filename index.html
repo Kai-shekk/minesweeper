@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="扫雷">
+<title>扫雷</title>
+<style>
+  :root {
+    --bg: #eef2f8;
+    --panel: #ffffff;
+    --cell: #b9c6de;
+    --cell-hover: #a5b5d4;
+    --open: #f3f5fa;
+    --accent: #ffb547;
+    --text: #2a2f42;
+    --border: #d3d9e6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at top, #ffffff, var(--bg));
+    color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 12px;
+    user-select: none;
+  }
+  h1 { margin: 0 0 18px; font-size: 28px; letter-spacing: 2px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 14px; }
+  .controls button, .custom button {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: .15s;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .controls button.active { background: var(--accent); color: #222; border-color: var(--accent); font-weight: 600; }
+  .custom { display: none; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; justify-content: center; font-size: 14px; }
+  .custom.show { display: flex; }
+  .custom input { width: 60px; padding: 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  .board-wrap {
+    background: var(--panel);
+    padding: 14px;
+    border-radius: 14px;
+    box-shadow: 0 8px 30px rgba(60,80,120,.15);
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .status {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; font-variant-numeric: tabular-nums;
+  }
+  .counter { background: #2a2f42; color: #ff5c5c; font-family: "Courier New", monospace; font-size: 24px; font-weight: bold; padding: 4px 10px; border-radius: 6px; min-width: 70px; text-align: center; }
+  .face { font-size: 30px; background: none; border: none; cursor: pointer; transition: transform .1s; }
+  .face:active { transform: scale(.9); }
+  .board { display: grid; gap: 2px; }
+  .cell {
+    width: var(--size); height: var(--size);
+    background: var(--cell);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: calc(var(--size) * .55);
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .cell:hover:not(.open) { background: var(--cell-hover); }
+  .cell.open { background: var(--open); cursor: default; }
+  .cell.mine-hit { background: #ff5c5c !important; }
+  .cell.wrong { background: #ffd2d2 !important; }
+  .n1 { color: #2f6fe0; } .n2 { color: #2e9d48; } .n3 { color: #e03b3b; } .n4 { color: #6a2fc2; }
+  .n5 { color: #b5651d; } .n6 { color: #138d90; } .n7 { color: #222; } .n8 { color: #777; }
+  .msg { margin-top: 16px; min-height: 24px; font-size: 16px; text-align: center; }
+  .tips { margin-top: 10px; opacity: .6; font-size: 12px; text-align: center; line-height: 1.8; }
+  .best { margin-top: 6px; font-size: 13px; opacity: .8; }
+</style>
+</head>
+<body>
+  <h1>💣 扫雷</h1>
+
+  <div class="controls">
+    <button data-level="easy" class="active">初级 9×9</button>
+    <button data-level="medium">中级 16×16</button>
+    <button data-level="hard">高级 16×30</button>
+    <button data-level="custom">自定义</button>
+  </div>
+
+  <div class="custom" id="customPanel">
+    行 <input type="number" id="cRows" min="5" max="30" value="12">
+    列 <input type="number" id="cCols" min="5" max="40" value="12">
+    雷 <input type="number" id="cMines" min="1" value="20">
+    <button id="applyCustom">开始</button>
+  </div>
+
+  <div class="board-wrap">
+    <div class="status">
+      <div class="counter" id="mineCount">010</div>
+      <button class="face" id="face" title="重新开始">🙂</button>
+      <div class="counter" id="timer">000</div>
+    </div>
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="msg" id="msg"></div>
+  <div class="best" id="best"></div>
+  <div class="tips">
+    左键翻开 · 右键插旗 / 取消 · 点击已翻开的数字可快速翻开周围格子<br>
+    第一下点击必定安全 · 手机长按插旗 · 按 R 重新开始
+  </div>
+
+<script>
+const LEVELS = {
+  easy:   { rows: 9,  cols: 9,  mines: 10 },
+  medium: { rows: 16, cols: 16, mines: 40 },
+  hard:   { rows: 16, cols: 30, mines: 99 },
+};
+
+let cfg = { ...LEVELS.easy }, level = 'easy';
+let grid = [], started = false, over = false, revealedCount = 0, flags = 0;
+let timer = 0, timerId = null;
+
+const $ = id => document.getElementById(id);
+const boardEl = $('board');
+
+function pad(n) { n = Math.max(-99, Math.min(999, n)); return n < 0 ? '-' + String(-n).padStart(2, '0') : String(n).padStart(3, '0'); }
+
+function cellSize() {
+  const maxW = Math.min(window.innerWidth - 60, 900);
+  return Math.max(22, Math.min(36, Math.floor(maxW / cfg.cols) - 2));
+}
+
+function init() {
+  clearInterval(timerId);
+  timer = 0; started = false; over = false; revealedCount = 0; flags = 0;
+  $('timer').textContent = pad(0);
+  $('mineCount').textContent = pad(cfg.mines);
+  $('face').textContent = '🙂';
+  $('msg').textContent = '';
+  showBest();
+
+  grid = [];
+  boardEl.innerHTML = '';
+  boardEl.style.setProperty('--size', cellSize() + 'px');
+  boardEl.style.gridTemplateColumns = `repeat(${cfg.cols}, var(--size))`;
+
+  for (let r = 0; r < cfg.rows; r++) {
+    grid[r] = [];
+    for (let c = 0; c < cfg.cols; c++) {
+      const el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.r = r; el.dataset.c = c;
+      boardEl.appendChild(el);
+      grid[r][c] = { mine: false, open: false, mark: 0, n: 0, el }; // mark: 0 无, 1 旗, 2 问号
+    }
+  }
+}
+
+function neighbors(r, c) {
+  const res = [];
+  for (let dr = -1; dr <= 1; dr++)
+    for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < cfg.rows && nc >= 0 && nc < cfg.cols) res.push([nr, nc]);
+    }
+  return res;
+}
+
+// 首击安全：第一下点击的格子及其周围（空间足够时）不放雷
+function placeMines(sr, sc) {
+  const safe = new Set([sr + ',' + sc]);
+  const total = cfg.rows * cfg.cols;
+  if (total - cfg.mines >= 9) neighbors(sr, sc).forEach(([r, c]) => safe.add(r + ',' + c));
+  const pool = [];
+  for (let r = 0; r < cfg.rows; r++)
+    for (let c = 0; c < cfg.cols; c++)
+      if (!safe.has(r + ',' + c)) pool.push([r, c]);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  pool.slice(0, cfg.mines).forEach(([r, c]) => grid[r][c].mine = true);
+  for (let r = 0; r < cfg.rows; r++)
+    for (let c = 0; c < cfg.cols; c++)
+      grid[r][c].n = neighbors(r, c).filter(([a, b]) => grid[a][b].mine).length;
+}
+
+function startGame(r, c) {
+  placeMines(r, c);
+  started = true;
+  timerId = setInterval(() => { timer++; $('timer').textContent = pad(timer); }, 1000);
+}
+
+function reveal(r, c) {
+  const stack = [[r, c]];
+  while (stack.length) {
+    const [cr, cc] = stack.pop();
+    const cell = grid[cr][cc];
+    if (cell.open || cell.mark === 1) continue;
+    cell.open = true;
+    cell.mark = 0;
+    revealedCount++;
+    cell.el.classList.add('open');
+    cell.el.textContent = cell.n || '';
+    if (cell.n) cell.el.classList.add('n' + cell.n);
+    if (cell.n === 0) neighbors(cr, cc).forEach(p => stack.push(p));
+  }
+}
+
+function openCell(r, c) {
+  if (over) return;
+  const cell = grid[r][c];
+  if (cell.mark === 1) return;
+  if (!started) startGame(r, c);
+
+  if (cell.open) { chord(r, c); return; }
+  if (cell.mine) { lose(r, c); return; }
+  reveal(r, c);
+  checkWin();
+}
+
+// 点数字：周围旗数等于数字时，翻开其余格子
+function chord(r, c) {
+  const cell = grid[r][c];
+  if (!cell.n) return;
+  const nb = neighbors(r, c);
+  const flagged = nb.filter(([a, b]) => grid[a][b].mark === 1).length;
+  if (flagged !== cell.n) return;
+  for (const [a, b] of nb) {
+    const x = grid[a][b];
+    if (x.open || x.mark === 1) continue;
+    if (x.mine) { lose(a, b); return; }
+    reveal(a, b);
+  }
+  checkWin();
+}
+
+function toggleMark(r, c) {
+  if (over) return;
+  const cell = grid[r][c];
+  if (cell.open) return;
+  cell.mark = cell.mark === 1 ? 0 : 1;
+  flags += cell.mark === 1 ? 1 : -1;
+  cell.el.textContent = cell.mark === 1 ? '🚩' : '';
+  $('mineCount').textContent = pad(cfg.mines - flags);
+}
+
+function lose(r, c) {
+  over = true;
+  clearInterval(timerId);
+  $('face').textContent = '😵';
+  for (let i = 0; i < cfg.rows; i++)
+    for (let j = 0; j < cfg.cols; j++) {
+      const x = grid[i][j];
+      if (x.mine && x.mark !== 1) { x.el.textContent = '💣'; x.el.classList.add('open'); }
+      if (!x.mine && x.mark === 1) { x.el.textContent = '❌'; x.el.classList.add('wrong'); }
+    }
+  grid[r][c].el.classList.add('mine-hit');
+  const lines = ['踩雷了！再来一把？', '寝室的空气突然凝固 💥', '别灰心，雷也是会骗人的', '这颗雷埋得太深了…'];
+  $('msg').textContent = lines[Math.floor(Math.random() * lines.length)];
+}
+
+function checkWin() {
+  if (over) return;
+  if (revealedCount === cfg.rows * cfg.cols - cfg.mines) {
+    over = true;
+    clearInterval(timerId);
+    $('face').textContent = '😎';
+    for (let i = 0; i < cfg.rows; i++)
+      for (let j = 0; j < cfg.cols; j++)
+        if (grid[i][j].mine) grid[i][j].el.textContent = '🚩';
+    $('mineCount').textContent = pad(0);
+    let text = `🎉 胜利！用时 ${timer} 秒`;
+    if (level !== 'custom') {
+      const key = 'ms-best-' + level;
+      const best = +localStorage.getItem(key) || Infinity;
+      if (timer < best) { localStorage.setItem(key, timer); text += ' · 新纪录！'; }
+    }
+    $('msg').textContent = text;
+    showBest();
+  }
+}
+
+function showBest() {
+  if (level === 'custom') { $('best').textContent = ''; return; }
+  const b = localStorage.getItem('ms-best-' + level);
+  $('best').textContent = b ? `🏆 本难度最佳：${b} 秒` : '';
+}
+
+// —— 事件 ——
+function getCell(e) {
+  const t = e.target.closest('.cell');
+  return t ? [+t.dataset.r, +t.dataset.c] : null;
+}
+
+boardEl.addEventListener('click', e => {
+  if (longPressed) { longPressed = false; return; }
+  const p = getCell(e); if (p) openCell(...p);
+});
+boardEl.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const p = getCell(e); if (p) toggleMark(...p);
+});
+boardEl.addEventListener('mousedown', e => { if (!over && e.button === 0) $('face').textContent = '😮'; });
+document.addEventListener('mouseup', () => { if (!over) $('face').textContent = '🙂'; });
+
+// 手机长按插旗
+let pressTimer = null, longPressed = false;
+boardEl.addEventListener('touchstart', e => {
+  const p = getCell(e); if (!p) return;
+  longPressed = false;
+  pressTimer = setTimeout(() => { longPressed = true; toggleMark(...p); navigator.vibrate && navigator.vibrate(30); }, 400);
+}, { passive: true });
+['touchend', 'touchmove', 'touchcancel'].forEach(ev =>
+  boardEl.addEventListener(ev, () => clearTimeout(pressTimer), { passive: true }));
+
+$('face').onclick = init;
+document.addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') init(); });
+
+document.querySelectorAll('[data-level]').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('[data-level]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    level = btn.dataset.level;
+    $('customPanel').classList.toggle('show', level === 'custom');
+    if (level !== 'custom') { cfg = { ...LEVELS[level] }; init(); }
+  };
+});
+
+$('applyCustom').onclick = () => {
+  const rows = Math.max(5, Math.min(30, +$('cRows').value || 9));
+  const cols = Math.max(5, Math.min(40, +$('cCols').value || 9));
+  const mines = Math.max(1, Math.min(rows * cols - 1, +$('cMines').value || 10));
+  $('cRows').value = rows; $('cCols').value = cols; $('cMines').value = mines;
+  cfg = { rows, cols, mines };
+  init();
+};
+
+window.addEventListener('resize', () => boardEl.style.setProperty('--size', cellSize() + 'px'));
+
+init();
+</script>
+</body>
+</html>
